@@ -1,0 +1,35 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller PyQt5 openpyxl
+
+    - name: Build executable
+      run: |
+        pyinstaller --onefile --windowed --name "AU_Extractor" au_extractor.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: AU_Extractor_Windows
+        path: dist/AU_Extractor.exe
