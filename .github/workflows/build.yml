@@ -1,35 +1,87 @@
 name: Build Windows Executable
 
+# Когда запускать сборку
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]  # При пуше в основную ветку
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ master ]
+  workflow_dispatch:  # Позволяет запускать вручную
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-latest  # Используем Windows виртуальную машину
 
     steps:
-    - uses: actions/checkout@v3
+    # Скачиваем код из репозитория
+    - name: Checkout code
+      uses: actions/checkout@v4
 
+    # Устанавливаем Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
+    # Кэшируем зависимости для ускорения сборки
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    # Устанавливаем зависимости
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller PyQt5 openpyxl
 
+    # Собираем exe файл
     - name: Build executable
       run: |
         pyinstaller --onefile --windowed --name "AU_Extractor" au_extractor.py
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
+    # Проверяем, что файл создался
+    - name: Verify build
+      run: |
+        if (Test-Path "dist/AU_Extractor.exe") {
+          Write-Host "✅ Executable built successfully!"
+          Get-ChildItem dist/AU_Extractor.exe | Format-List Name, Length, LastWriteTime
+        } else {
+          Write-Host "❌ Build failed - executable not found"
+          exit 1
+        }
+
+    # Загружаем готовый exe как артефакт
+    - name: Upload executable
+      uses: actions/upload-artifact@v4
       with:
-        name: AU_Extractor_Windows
+        name: AU_Extractor_Windows_${{ github.run_number }}
         path: dist/AU_Extractor.exe
+        retention-days: 30  # Хранить 30 дней
+
+    # Создаем release при пуше тега (опционально)
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    # Прикрепляем exe к релизу
+    - name: Upload Release Asset
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: dist/AU_Extractor.exe
+        asset_name: AU_Extractor.exe
+        asset_content_type: application/octet-stream
